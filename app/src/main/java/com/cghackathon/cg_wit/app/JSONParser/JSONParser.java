@@ -45,11 +45,10 @@ public class JSONParser {
                 sb.append(line);
             }
             is.close();
-            json = sb.toString();
+            json = sb.toString();//.replaceAll("\\s+", "");
         } catch (Exception e) {
             Log.e("Buffer Error", "Error converting result " + e.toString());
         }
-
         return json;
     }
 }

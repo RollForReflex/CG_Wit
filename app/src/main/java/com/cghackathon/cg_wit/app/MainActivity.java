@@ -15,7 +15,6 @@ import android.widget.TextView;
 import com.cghackathon.cg_wit.app.JSONParser.JSONParser;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 
 import org.apache.http.HttpEntity;
@@ -35,7 +34,9 @@ import java.io.Reader;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.Charset;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 
 import ai.wit.sdk.IWitListener;
 import ai.wit.sdk.Wit;
@@ -45,16 +46,15 @@ public class MainActivity extends ActionBarActivity implements IWitListener {
     private class JSONParse extends AsyncTask<String, String, String> {
 
         private String URL = "http://www.willfallows.com/Hackathon/entities.json";
-        private Intent[] _data;
+        private List<Intent> _data;
 
-        private Intent[] GetHackathonData(){
+        public List<Intent> GetHackathonData(){
             return _data;
         }
 
         @Override
         protected void onPreExecute() {
             super.onPreExecute();
-
         }
         @Override
         protected String doInBackground(String... strings) {
@@ -65,19 +65,48 @@ public class MainActivity extends ActionBarActivity implements IWitListener {
         }
         @Override
         protected void onPostExecute(String json) {
-            Gson gson = new Gson();
-            //_data = gson.fromJson(json, Intent[].class);
-            JsonArray jsonArray = new JsonArray();
+            JSONObject obj = new JSONObject();
             try {
-                 jsonArray = jsonArray.
+                obj = new JSONObject(json);
             } catch (JSONException e) {
                 e.printStackTrace();
             }
-            String cats = jsonArray.toString();
+            JSONArray array = null;
+            try {
+                array = obj.getJSONArray("intents");
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+            List<Intent> intentList = new ArrayList<Intent>();
+            for(int i = 0 ; i < array.length() ; i++){
+                try {
+                    System.out.println(array.getJSONObject(i).getString("name"));
+                    Intent intent = new Intent();
+                    intent.name = array.getJSONObject(i).getString("name");
+                    intent.generalResponse = array.getJSONObject(i).getString("generalResponse");
+                    JSONArray entitiesArr = array.getJSONObject(i).getJSONArray("entities");
+                    if(entitiesArr.length() > 0){
+
+                        List<Entity> entityList = new ArrayList<Entity>();
+                        for(int j = 0; j < entitiesArr.length(); j++){
+                            Entity entity = new Entity();
+                            entity.name = entitiesArr.getJSONObject(j).getString("name");
+                            entity.response = entitiesArr.getJSONObject(j).getString("response");
+                            entityList.add(entity);
+                        }
+                        intent.entities = entityList;
+                    }
+
+                    intentList.add(intent);
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+            }
+            _data = intentList;
         }
     }
 
-    private HackathonData responseData;
+    JSONParse parseObj = new JSONParse();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -90,8 +119,7 @@ public class MainActivity extends ActionBarActivity implements IWitListener {
             wit_fragment.setAccessToken("SUBVK4TMRLAA6UYX2Y2A2MDPT4NSXM5Q");
         }
 
-        JSONParse jsonParse = new JSONParse();
-        jsonParse.execute();
+        parseObj.execute();
 
     }
 
@@ -116,21 +144,34 @@ public class MainActivity extends ActionBarActivity implements IWitListener {
         return super.onOptionsItemSelected(item);
     }
 
-    private Intent GetIntentWithString(String intentName)
-    {
-        for(int i = 0; i < responseData.intents.size(); i++)
-        {
-            if(responseData.intents.get(i).name.toLowerCase() == intentName.toLowerCase())
-                return responseData.intents.get(i);
-        }
-
-        return null;
-    }
-
     // Should match the intent passed in from witDidGraspIntent and grab any entities if they exist and see if the intent has any matching entities
     // If it does, return the entity response. Otherwise, return the default response for the intent
-    private String GetResponseForIntent(Intent intent){
-        return new String();
+    private String GetResponseForIntent(String intent){
+        List<Intent> data = parseObj.GetHackathonData();
+        String responseStr = null;
+
+        for(int i = 0; i < data.size(); i++){
+
+            if(data.get(i).entities.size() > 0) {
+                if (data.get(i).name == intent) {
+                    responseStr = data.get(i).generalResponse;
+                }
+            }
+            else{
+                Intent curIntent = data.get(i);
+                for(int j = 0; j < curIntent.entities.size(); j++){
+                    if(curIntent.entities.get(j).name == intent){
+                        responseStr = curIntent.entities.get(j).response;
+                    }
+                }
+            }
+        }
+
+        if(responseStr == null){
+            return "Did not find matching entity";
+        }else{
+            return responseStr;
+        }
     }
 
     @Override
@@ -141,11 +182,18 @@ public class MainActivity extends ActionBarActivity implements IWitListener {
         ((TextView) findViewById(R.id.jsonView)).setText(Html.fromHtml("<span><b>Intent: " + intent +
                 "<b></span><br/>") + jsonOutput +
                 Html.fromHtml("<br/><span><b>Confidence: " + confidence + "<b></span>" + "</br><span><b>Response:</b> "
-                        +  jsonOutput +  "</span>" ));
+                        +  GetEntityResponse(intent, jsonOutput) +  "</span>" ));
+    }
 
-        if(intent != null && jsonOutput != null){
-            GetEntityResponse(intent, jsonOutput);
+    private static String readAll(Reader rd) throws IOException {
+
+        BufferedReader reader = new BufferedReader(rd);
+        StringBuilder sb = new StringBuilder();
+        String line = null;
+        while ((line = reader.readLine()) != null) {
+            sb.append(line);
         }
+        return sb.toString();
     }
 
     public String GetEntityResponse(String intent, String jsonOutput){
